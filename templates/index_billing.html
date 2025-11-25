@@ -1,0 +1,737 @@
+{% extends "base.html" %}
+{% block content %}
+    <div class="content-header">
+        <div>
+            <h2>Billing Module</h2>
+            <p>Search for an admitted patient and add charges. You can add multiple charge entries for the same admission.</p>
+        </div>
+        <div class="search-area">
+            <form class="search-form" method="get" action="{{ url_for('index_billing') }}">
+                <input name="search" placeholder="Search by patient name, ID, MRN, mobile, or Admission ID (e.g., ADM00003)" value="{{ search_query }}">
+                <button type="submit">Search</button>
+            </form>
+            {% if search_query and not selected_admission %}
+                <div class="search-dropdown">
+                    {% if admission_search_results %}
+                        <div class="search-section-header">Admissions</div>
+                        {% for admission in admission_search_results %}
+                            {% if admission and admission.admission_id is not none %}
+                                {% set adm_id_raw = admission.admission_id %}
+                                {% if adm_id_raw is number %}
+                                    {% set adm_id = adm_id_raw|int %}
+                                {% else %}
+                                    {% set adm_id_str = adm_id_raw|string|trim %}
+                                    {% if adm_id_str|length > 0 %}
+                                        {% set adm_id = adm_id_str|int|default(0) %}
+                                    {% else %}
+                                        {% set adm_id = 0 %}
+                                    {% endif %}
+                                {% endif %}
+                                {% if adm_id > 0 %}
+                                    <a class="search-result" href="{{ url_for('index_billing', search=search_query, admission_id=admission.admission_id) }}">
+                                        <span class="search-result-name">Admission ID: {{ admission.admission_id|format_admission_id }}</span>
+                                        <span class="search-result-meta">Patient: {{ admission.patient_name or "N/A" }} | Date: {{ admission.admission_date_time or "N/A" }}</span>
+                                    </a>
+                                {% endif %}
+                            {% endif %}
+                        {% endfor %}
+                    {% endif %}
+                    {% if search_results %}
+                        {% if admission_search_results %}
+                            <div class="search-section-header">Patients</div>
+                        {% endif %}
+                        {% for patient in search_results %}
+                            <a class="search-result" href="{{ url_for('index_billing', search=search_query, patient_id=patient.patient_id) }}">
+                                <span class="search-result-name">{{ patient.full_name or "Unnamed Patient" }}</span>
+                                <span class="search-result-meta">MRN: {{ patient.hospital_id or "N/A" }} | Mobile: {{ patient.mobile_primary or "N/A" }}</span>
+                            </a>
+                        {% endfor %}
+                    {% endif %}
+                    {% if not admission_search_results and not search_results %}
+                        <div class="search-no-results">No matches for "{{ search_query }}".</div>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    {% if success %}
+        <div class="message success">{{ success }}</div>
+    {% endif %}
+    {% if error %}
+        <div class="message error">{{ error }}</div>
+    {% endif %}
+    
+    <form method="post" action="{{ url_for('index_billing') }}" id="billing-form">
+        <input type="hidden" name="patient_id" id="patient_id" value="{{ selected_patient.patient_id if selected_patient else '' }}">
+        <input type="hidden" name="admission_id" id="admission_id" value="{{ selected_admission.admission_id if selected_admission else '' }}">
+        
+        <div class="billing-section">
+            <h3>Patient Information</h3>
+            {% if selected_patient %}
+                <div class="patient-info">
+                    <p><strong>Name:</strong> {{ selected_patient.full_name }}</p>
+                    <p><strong>MRN:</strong> {{ selected_patient.hospital_id or "N/A" }}</p>
+                    <p><strong>Mobile:</strong> {{ selected_patient.mobile_primary or "N/A" }}</p>
+                    <p><strong>Age:</strong> {{ selected_patient.age or "N/A" }}</p>
+                    <p><strong>Gender:</strong> {{ selected_patient.gender or "N/A" }}</p>
+                </div>
+                {% if selected_admission %}
+                    <div class="admission-info">
+                        <h4>Admission Details</h4>
+                        <p><strong>Admission ID:</strong> {{ selected_admission.admission_id|format_admission_id }}</p>
+                        <p><strong>Ward/Room:</strong> {{ selected_admission.ward or "N/A" }} / {{ selected_admission.room_number or "N/A" }}</p>
+                        <p><strong>Bed:</strong> {{ selected_admission.bed_number or "N/A" }}</p>
+                        <p><strong>Department:</strong> {{ selected_admission.admitting_department or "N/A" }}</p>
+                        <input type="hidden" name="billing_type" value="IPD">
+                        {% set has_final_bill = false %}
+                        {% set final_bill = none %}
+                        {% for bill in existing_bills %}
+                            {% if bill.bill_status == "Final" %}
+                                {% set has_final_bill = true %}
+                                {% set final_bill = bill %}
+                            {% endif %}
+                        {% endfor %}
+                        {% if has_final_bill %}
+                            <div class="message warning" style="margin-top: 1rem; padding: 1rem; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+                                <strong>⚠ Final Bill Already Generated</strong><br>
+                                Bill No: <strong>{{ final_bill.bill_number }}</strong> | Date: {{ final_bill.billing_date }}<br>
+                                <small>Only one final bill can be generated per admission. You can still add charges as drafts using "Save Charges".</small>
+                            </div>
+                        {% endif %}
+                    </div>
+                {% else %}
+                    <div class="message info">
+                        <p><strong>Note:</strong> Billing is only available for admitted patients. Please search and select a patient with an admission to proceed with billing.</p>
+                    </div>
+                {% endif %}
+            {% else %}
+                <p class="message info">Please search and select a patient to create a bill.</p>
+                <input type="hidden" name="billing_type" value="OPD">
+            {% endif %}
+        </div>
+        
+        {% if selected_patient and charge_master %}
+            {% if selected_admission %}
+                {% if charge_entries or existing_bills %}
+                    <div class="billing-section">
+                        <h3>Billing History for This Admission</h3>
+                        {% if charge_entries %}
+                            <h4>Saved Charge Entries ({{ charge_entries|length }})</h4>
+                            <div class="bills-history">
+                                {% for entry in charge_entries %}
+                                    <div class="bill-entry charge-entry">
+                                        <div class="bill-header">
+                                            <div>
+                                                {% set entry_id = entry.charge_entry_id|int %}
+                                                <strong>Charge Entry #CHG{{ "%05d"|format(entry_id) }}</strong>
+                                                <span class="bill-date">{{ entry.created_at or "N/A" }}</span>
+                                            </div>
+                                            <div class="bill-total">
+                                                Total: ₹{{ entry.total_amount or "0.00" }}
+                                            </div>
+                                        </div>
+                                        <div class="entry-status">
+                                            <span class="status-badge {{ (entry.status or 'pending')|lower }}">{{ entry.status or "Pending" }}</span>
+                                        </div>
+                                        <div class="bill-details">
+                                            {% if entry.parsed_charges %}
+                                                <table class="bill-charges-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Charge</th>
+                                                            <th>Quantity</th>
+                                                            <th>Unit Price</th>
+                                                            <th>Total</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {% for charge in entry.parsed_charges %}
+                                                            <tr>
+                                                                <td>{{ charge.charge_name }}</td>
+                                                                <td>{{ charge.quantity }}</td>
+                                                                <td>₹{{ "%.2f"|format(charge.unit_price|float) }}</td>
+                                                                <td>₹{{ "%.2f"|format(charge.total|float) }}</td>
+                                                            </tr>
+                                                        {% endfor %}
+                                                    </tbody>
+                                                </table>
+                                            {% else %}
+                                                <p>No charge details available.</p>
+                                            {% endif %}
+                                            <div class="bill-meta">
+                                                <span><strong>Discount:</strong> ₹{{ entry.discount or "0.00" }}</span>
+                                                <span><strong>Tax:</strong> ₹{{ entry.tax or "0.00" }}</span>
+                                                <span><strong>Status:</strong> {{ entry.status or "Pending" }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        {% if existing_bills %}
+                            <h4>Generated Bills ({{ existing_bills|length }})</h4>
+                            <div class="bills-history">
+                                {% for bill in existing_bills %}
+                                    <div class="bill-entry">
+                                        <div class="bill-header">
+                                            <div>
+                                                <strong>Bill #{{ bill.bill_number or "N/A" }}</strong>
+                                                <span class="bill-date">{{ bill.billing_date or "N/A" }}</span>
+                                            </div>
+                                            <div class="bill-total">
+                                                Total: ₹{{ bill.total_amount or "0.00" }}
+                                            </div>
+                                        </div>
+                                        <div class="bill-details">
+                                            {% if bill.parsed_charges %}
+                                                <table class="bill-charges-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Charge</th>
+                                                            <th>Quantity</th>
+                                                            <th>Unit Price</th>
+                                                            <th>Total</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {% for charge in bill.parsed_charges %}
+                                                            <tr>
+                                                                <td>{{ charge.charge_name }}</td>
+                                                                <td>{{ charge.quantity }}</td>
+                                                                <td>₹{{ "%.2f"|format(charge.unit_price|float) }}</td>
+                                                                <td>₹{{ "%.2f"|format(charge.total|float) }}</td>
+                                                            </tr>
+                                                        {% endfor %}
+                                                    </tbody>
+                                                    <tfoot>
+                                                        <tr>
+                                                            <td colspan="3" style="text-align: right;"><strong>Subtotal:</strong></td>
+                                                            <td><strong>₹{{ bill.subtotal or "0.00" }}</strong></td>
+                                                        </tr>
+                                                        {% if bill.discount and bill.discount|float > 0 %}
+                                                            <tr>
+                                                                <td colspan="3" style="text-align: right;">Discount:</td>
+                                                                <td>₹{{ bill.discount }}</td>
+                                                            </tr>
+                                                        {% endif %}
+                                                        {% if bill.tax and bill.tax|float > 0 %}
+                                                            <tr>
+                                                                <td colspan="3" style="text-align: right;">Tax:</td>
+                                                                <td>₹{{ bill.tax }}</td>
+                                                            </tr>
+                                                        {% endif %}
+                                                        <tr class="total-row">
+                                                            <td colspan="3" style="text-align: right;"><strong>Total:</strong></td>
+                                                            <td><strong>₹{{ bill.total_amount or "0.00" }}</strong></td>
+                                                        </tr>
+                                                    </tfoot>
+                                                </table>
+                                            {% else %}
+                                                <p>No charge details available.</p>
+                                            {% endif %}
+                                            <div class="bill-meta">
+                                                <span><strong>Status:</strong> {{ bill.payment_status or "Pending" }}</span>
+                                                {% if bill.payment_mode %}
+                                                    <span><strong>Payment Mode:</strong> {{ bill.payment_mode }}</span>
+                                                {% endif %}
+                                                {% if bill.payment_reference %}
+                                                    <span><strong>Reference:</strong> {{ bill.payment_reference }}</span>
+                                                {% endif %}
+                                            </div>
+                                            <div class="bill-actions">
+                                                <a href="{{ url_for('view_bill', bill_id=bill.bill_id) }}" class="btn-link">View</a>
+                                                {% if bill.bill_status == "Draft" %}
+                                                    <a href="{{ url_for('edit_bill', bill_id=bill.bill_id) }}" class="btn-link">Edit</a>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                {% else %}
+                    <div class="billing-section">
+                        <h3>Billing History</h3>
+                        <p class="message info">No charges have been added for this admission yet. Add charges below.</p>
+                    </div>
+                {% endif %}
+            {% endif %}
+            
+            <div class="billing-section">
+                <h3>{% if selected_admission %}Add New Charges{% else %}Select Charges{% endif %}</h3>
+                {% if selected_admission and admission_days > 0 %}
+                    <div class="days-validation-info">
+                        <strong>Admission Days: {{ admission_days }} day{{ 's' if admission_days != 1 else '' }}</strong>
+                        <span id="room-bed-total-info">Total Room/Bed Charges Quantity: <span id="room-bed-total-qty">0</span> days</span>
+                        <span id="room-bed-validation" class="validation-message"></span>
+                    </div>
+                {% endif %}
+                <div class="charges-container">
+                    {% for section in charge_field_sections %}
+                        <div class="charge-section">
+                            <h4>{{ section.label }}</h4>
+                            <table class="charges-table">
+                                <thead>
+                                    <tr>
+                                        <th>Charge</th>
+                                        <th>Amount (₹)</th>
+                                        <th>Quantity</th>
+                                        <th>Total (₹)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for field in section.fields %}
+                                        {% set charge_amount = charge_master.get(field.name, "0") if charge_master else "0" %}
+                                        {% if charge_amount == "" or charge_amount is none %}
+                                            {% set charge_value = 0.0 %}
+                                        {% else %}
+                                            {% set charge_value = charge_amount|float %}
+                                        {% endif %}
+                                        {% set is_registration_section = section.key == "registration" %}
+                                        {% set is_registration_used = field.name in used_registration_charges if used_registration_charges else False %}
+                                        {% set is_room_bed_section = section.key == "room_bed" %}
+                                        {% set is_room_bed_used = field.name in used_room_bed_charges if used_room_bed_charges else False %}
+                                        {% set is_nursing_care = field.name == "nursing_care_charge" %}
+                                        {% set available_nursing_days = (admission_days - total_nursing_care_days) if (is_nursing_care and selected_admission and admission_days > 0) else 0 %}
+                                        {% set is_nursing_disabled = is_nursing_care and selected_admission and available_nursing_days <= 0 %}
+                                        {% set is_disabled = (is_registration_section and is_registration_used) or (is_room_bed_section and is_room_bed_used) or is_nursing_disabled %}
+                                        {% set is_room_bed_charge = field.name in room_bed_charges if room_bed_charges else False %}
+                                        {% set auto_qty = admission_days if (is_room_bed_charge and selected_admission and admission_days > 0) else (available_nursing_days if (is_nursing_care and selected_admission and available_nursing_days > 0) else 0) %}
+                                        {% set input_qty = 0 if is_disabled else auto_qty %}
+                                        {% set is_general_ward = field.name == "general_ward_bed" %}
+                                        <tr {% if is_disabled %}class="charge-disabled"{% endif %}>
+                                            <td>
+                                                {{ field.label|replace("(₹)", "")|trim }}
+                                                {% if is_disabled %}
+                                                    {% if is_nursing_disabled %}
+                                                        <span class="already-used-badge">(All {{ admission_days }} day{{ 's' if admission_days != 1 else '' }} already applied)</span>
+                                                    {% else %}
+                                                        <span class="already-used-badge">(Already Used)</span>
+                                                    {% endif %}
+                                                {% elif is_room_bed_charge and selected_admission and not is_room_bed_used %}
+                                                    <span class="auto-calculated-badge">(Auto: {{ admission_days }} day{{ 's' if admission_days != 1 else '' }})</span>
+                                                {% elif is_nursing_care and selected_admission and available_nursing_days > 0 %}
+                                                    <span class="auto-calculated-badge">(Auto: {{ available_nursing_days }} day{{ 's' if available_nursing_days != 1 else '' }} available, {{ total_nursing_care_days }} already applied)</span>
+                                                {% endif %}
+                                            </td>
+                                            <td class="charge-amount">{{ "%.2f"|format(charge_value) }}</td>
+                                            <td>
+                                                <input 
+                                                    type="number" 
+                                                    name="qty_{{ field.name }}" 
+                                                    class="charge-qty {% if is_disabled %}disabled-charge{% endif %} {% if is_room_bed_charge and selected_admission and not is_general_ward %}auto-calculated{% endif %} {% if is_nursing_care and selected_admission and available_nursing_days > 0 %}auto-calculated{% endif %}" 
+                                                    min="0" 
+                                                    value="{{ input_qty }}" 
+                                                    data-charge="{{ field.name }}"
+                                                    data-price="{{ charge_value }}"
+                                                    onchange="calculateBill()"
+                                                    {% if is_disabled %}
+                                                        {% if is_nursing_disabled %}
+                                                            disabled title="Nursing Care Charge has already been applied for all {{ admission_days }} day{{ 's' if admission_days != 1 else '' }} of admission"
+                                                        {% else %}
+                                                            disabled title="This charge has already been applied and cannot be added again"
+                                                        {% endif %}
+                                                    {% elif is_room_bed_charge and selected_admission and not is_general_ward and not is_room_bed_used %}
+                                                        readonly title="Automatically calculated based on admission days ({{ admission_days }} day{{ 's' if admission_days != 1 else '' }})"
+                                                    {% elif is_room_bed_charge and selected_admission and is_general_ward and not is_room_bed_used %}
+                                                        title="Auto-filled with {{ admission_days }} day{{ 's' if admission_days != 1 else '' }}, but you can edit if needed"
+                                                    {% elif is_nursing_care and selected_admission and available_nursing_days > 0 %}
+                                                        readonly title="Automatically calculated: {{ available_nursing_days }} day{{ 's' if available_nursing_days != 1 else '' }} available ({{ total_nursing_care_days }} already applied)"
+                                                    {% endif %}
+                                                >
+                                            </td>
+                                            <td class="charge-total">{{ "%.2f"|format(charge_value * auto_qty) }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% else %}
+            <div class="billing-section">
+                <div class="message info">
+                    <p><strong>Please select an admission to add charges.</strong></p>
+                    <p>Billing is only available for admitted patients. Use the search above to find and select a patient with an admission.</p>
+                </div>
+            </div>
+            {% endif %}
+            
+            {% if selected_admission %}
+            <div class="billing-section">
+                <h3>Bill Summary</h3>
+                <div class="bill-summary">
+                    <div class="summary-row">
+                        <label>Subtotal (₹):</label>
+                        <input type="text" name="subtotal_display" id="subtotal_display" readonly value="0.00" class="summary-input">
+                        <input type="hidden" name="subtotal" id="subtotal" value="0">
+                    </div>
+                    <div class="summary-row">
+                        <label>Discount (₹):</label>
+                        <input type="number" name="discount" id="discount" min="0" step="0.01" value="0" onchange="calculateBill()" class="summary-input">
+                    </div>
+                    <div class="summary-row">
+                        <label>Tax (₹):</label>
+                        <input type="number" name="tax" id="tax" min="0" step="0.01" value="0" onchange="calculateBill()" class="summary-input">
+                    </div>
+                    <div class="summary-row total-row">
+                        <label><strong>Total Amount (₹):</strong></label>
+                        <input type="text" name="total_display" id="total_display" readonly value="0.00" class="summary-input total-input">
+                        <input type="hidden" name="total_amount" id="total_amount" value="0">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-actions">
+                {% if selected_admission %}
+                    {% set has_final_bill = false %}
+                    {% for bill in existing_bills %}
+                        {% if bill.bill_status == "Final" %}
+                            {% set has_final_bill = true %}
+                        {% endif %}
+                    {% endfor %}
+                    <button type="submit" name="action" value="save" class="btn-secondary">Save Charges</button>
+                    {% if not has_final_bill %}
+                        <button type="submit" name="action" value="generate" class="btn-primary">Generate Bill</button>
+                    {% else %}
+                        <button type="button" class="btn-primary" disabled title="Final bill already generated for this admission">Generate Bill (Already Generated)</button>
+                    {% endif %}
+                {% else %}
+                    <div class="message warning">
+                        Please select an admission to proceed with billing.
+                    </div>
+                {% endif %}
+            </div>
+        {% endif %}
+    </form>
+    
+    <script>
+        function calculateBill() {
+            let subtotal = 0;
+            let roomBedTotalQty = 0;
+            const allRoomBedChargeNames = {{ all_room_bed_charges|tojson }};
+            
+            // Calculate from all quantity inputs
+            document.querySelectorAll('.charge-qty').forEach(function(input) {
+                const qty = parseFloat(input.value) || 0;
+                const price = parseFloat(input.dataset.price) || 0;
+                const total = qty * price;
+                subtotal += total;
+                
+                // Track room/bed charges total quantity
+                const chargeName = input.dataset.charge;
+                if (allRoomBedChargeNames.includes(chargeName)) {
+                    roomBedTotalQty += qty;
+                }
+                
+                // Update row total
+                const row = input.closest('tr');
+                const totalCell = row.querySelector('.charge-total');
+                if (totalCell) {
+                    totalCell.textContent = total.toFixed(2);
+                }
+            });
+            
+            // Update room/bed charges total and validation
+            const roomBedTotalEl = document.getElementById('room-bed-total-qty');
+            const roomBedValidationEl = document.getElementById('room-bed-validation');
+            const admissionDays = {{ admission_days|default(0) }};
+            
+            if (roomBedTotalEl) {
+                roomBedTotalEl.textContent = roomBedTotalQty;
+            }
+            
+            if (roomBedValidationEl && admissionDays > 0) {
+                if (roomBedTotalQty === admissionDays) {
+                    roomBedValidationEl.textContent = '✓ Valid';
+                    roomBedValidationEl.className = 'validation-message valid';
+                } else if (roomBedTotalQty < admissionDays) {
+                    roomBedValidationEl.textContent = `⚠ Missing ${admissionDays - roomBedTotalQty} day(s)`;
+                    roomBedValidationEl.className = 'validation-message warning';
+                } else {
+                    roomBedValidationEl.textContent = `⚠ Exceeds by ${roomBedTotalQty - admissionDays} day(s)`;
+                    roomBedValidationEl.className = 'validation-message warning';
+                }
+            }
+            
+            // Get discount and tax
+            const discount = parseFloat(document.getElementById('discount').value) || 0;
+            const tax = parseFloat(document.getElementById('tax').value) || 0;
+            
+            // Calculate final total
+            const total = subtotal - discount + tax;
+            
+            // Update display
+            document.getElementById('subtotal_display').value = subtotal.toFixed(2);
+            document.getElementById('subtotal').value = subtotal.toFixed(2);
+            document.getElementById('total_display').value = total.toFixed(2);
+            document.getElementById('total_amount').value = total.toFixed(2);
+        }
+        
+        // Initialize calculation on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            calculateBill();
+        });
+    </script>
+    
+    <style>
+        .billing-section {
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            background: #f9f9f9;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+        .billing-section h3 {
+            margin-top: 0;
+            color: #0b3d60;
+            border-bottom: 2px solid #0b3d60;
+            padding-bottom: 0.5rem;
+        }
+        .billing-section h4 {
+            margin-top: 1rem;
+            color: #555;
+        }
+        .patient-info, .admission-info {
+            background: #fff;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-top: 1rem;
+        }
+        .patient-info p, .admission-info p {
+            margin: 0.5rem 0;
+        }
+        .charges-container {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .charge-section {
+            margin-bottom: 1.5rem;
+        }
+        .charge-section h4 {
+            background: #0b3d60;
+            color: #fff;
+            padding: 0.5rem 1rem;
+            margin: 0 0 0.5rem 0;
+            border-radius: 4px;
+        }
+        .charges-table {
+            width: 100%;
+            background: #fff;
+        }
+        .charges-table th {
+            background: #f5f5f5;
+            font-weight: 600;
+        }
+        .charge-amount, .charge-total {
+            text-align: right;
+            font-weight: 600;
+        }
+        .charge-qty {
+            width: 80px;
+            text-align: center;
+        }
+        .bill-summary {
+            background: #fff;
+            padding: 1rem;
+            border-radius: 4px;
+        }
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #eee;
+        }
+        .summary-row.total-row {
+            border-top: 2px solid #0b3d60;
+            margin-top: 0.5rem;
+            padding-top: 1rem;
+            font-size: 1.1rem;
+        }
+        .summary-input {
+            width: 150px;
+            text-align: right;
+            padding: 0.5rem;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .total-input {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #0b3d60;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+        .message.info {
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 1rem;
+            border-radius: 4px;
+        }
+        .bills-history {
+            margin-top: 1rem;
+        }
+        .bill-entry {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .bill-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #0b3d60;
+            margin-bottom: 1rem;
+        }
+        .bill-date {
+            color: #666;
+            font-size: 0.9rem;
+            margin-left: 1rem;
+        }
+        .bill-total {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #0b3d60;
+        }
+        .bill-charges-table {
+            width: 100%;
+            margin: 1rem 0;
+            border-collapse: collapse;
+        }
+        .bill-charges-table th {
+            background: #f5f5f5;
+            padding: 0.6rem;
+            text-align: left;
+            font-weight: 600;
+            border: 1px solid #ddd;
+        }
+        .bill-charges-table td {
+            padding: 0.6rem;
+            border: 1px solid #ddd;
+        }
+        .bill-charges-table tfoot {
+            background: #f9f9f9;
+        }
+        .bill-charges-table tfoot .total-row {
+            background: #e8f4f8;
+            font-weight: 600;
+        }
+        .bill-meta {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #eee;
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .bill-meta span {
+            font-size: 0.9rem;
+            color: #555;
+        }
+        .entry-status {
+            margin: 0.5rem 0 1rem 0;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: capitalize;
+        }
+        .status-badge.pending {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .status-badge.merged {
+            background-color: #e2e3e5;
+            color: #41464b;
+        }
+        .charge-disabled {
+            opacity: 0.6;
+            background-color: #f9f9f9;
+        }
+        .charge-disabled td {
+            color: #999;
+        }
+        .disabled-charge {
+            background-color: #e0e0e0;
+            cursor: not-allowed;
+        }
+        .already-used-badge {
+            display: inline-block;
+            background-color: #ff9800;
+            color: #fff;
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            margin-left: 0.5rem;
+            font-weight: 600;
+        }
+        .auto-calculated-badge {
+            display: inline-block;
+            background-color: #4caf50;
+            color: #fff;
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            margin-left: 0.5rem;
+            font-weight: 600;
+        }
+        .auto-calculated {
+            background-color: #e8f5e9;
+            font-weight: 600;
+            cursor: not-allowed;
+        }
+        .days-validation-info {
+            background-color: #e3f2fd;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .days-validation-info strong {
+            color: #0b3d60;
+        }
+        #room-bed-total-info {
+            color: #555;
+        }
+        .validation-message {
+            font-weight: 600;
+            padding: 0.3rem 0.8rem;
+            border-radius: 4px;
+        }
+        .validation-message.valid {
+            background-color: #4caf50;
+            color: #fff;
+        }
+        .validation-message.warning {
+            background-color: #ff9800;
+            color: #fff;
+        }
+        .search-section-header {
+            font-weight: 600;
+            color: #0b3d60;
+            padding: 0.5rem 1rem;
+            background-color: #e3f2fd;
+            border-bottom: 1px solid #90caf9;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+        }
+    </style>
+{% endblock %}
+

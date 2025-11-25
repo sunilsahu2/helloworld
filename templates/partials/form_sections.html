@@ -1,0 +1,151 @@
+{% macro render_sections(sections, form_data, disabled_auto=False, show_nav=False, readonly=False, charge_master=None, charge_field_sections=None) %}
+<div class="tabbed-form">
+    {% if show_nav %}
+        <div class="tab-nav" role="tablist">
+            {% for section in sections %}
+                <button type="button" class="tab-button{% if loop.first %} active{% endif %}" data-target="{{ section.key }}" aria-controls="{{ section.key }}">
+                    {{ section.label }}
+                </button>
+            {% endfor %}
+        </div>
+    {% endif %}
+    <div class="tab-panels">
+        {% for section in sections %}
+            <section id="{{ section.key }}" class="tab-panel{% if loop.first %} active{% endif %}" aria-labelledby="{{ section.key }}-tab">
+                {% for field in section.fields %}
+                    {% set value = form_data.get(field.name, '') %}
+                    <div class="form-field">
+                        <label for="{{ field.name }}">
+                            {{ field.label }}
+                            {% if field.get('required') %}<span aria-hidden="true" class="required">*</span>{% endif %}
+                        </label>
+                        {% if field.get('auto') %}
+                            <div class="readonly-value">
+                                {% if value %}
+                                    {{ value }}
+                                {% else %}
+                                    Will be generated automatically on save.
+                                {% endif %}
+                            </div>
+                        {% elif readonly %}
+                            <div class="readonly-value">
+                                {{ value or "Not provided" }}
+                            </div>
+                        {% elif field.get('type') == "doctor_search" %}
+                            <div class="doctor-search-container">
+                                <input
+                                    id="{{ field.name }}"
+                                    name="{{ field.name }}"
+                                    type="text"
+                                    class="doctor-search-input"
+                                    value="{{ value }}"
+                                    autocomplete="off"
+                                    {% if field.get('required') %}required{% endif %}
+                                    placeholder="Type to search doctors..."
+                                >
+                                <div class="doctor-search-dropdown" id="{{ field.name }}_dropdown"></div>
+                            </div>
+                        {% elif field.get('type') == "patient_search" %}
+                            <div class="patient-search-container">
+                                <input
+                                    id="{{ field.name }}"
+                                    name="{{ field.name }}"
+                                    type="text"
+                                    class="patient-search-input"
+                                    value="{{ value }}"
+                                    autocomplete="off"
+                                    {% if field.get('required') %}required{% endif %}
+                                    placeholder="Type to search patients..."
+                                >
+                                <div class="patient-search-dropdown" id="{{ field.name }}_dropdown"></div>
+                            </div>
+                        {% elif field.get('type') == "textarea" %}
+                            <textarea id="{{ field.name }}" name="{{ field.name }}" {% if field.get('required') %}required{% endif %}>{{ value }}</textarea>
+                        {% elif field.get('type') == "select" %}
+                            <select id="{{ field.name }}" name="{{ field.name }}" {% if field.get('required') %}required{% endif %}>
+                                <option value="">Select...</option>
+                                {% for option in field.get('options', []) %}
+                                    <option value="{{ option }}" {% if value == option %}selected{% endif %}>{{ option }}</option>
+                                {% endfor %}
+                            </select>
+                        {% elif field.get('type') == "checkbox" %}
+                            <input type="checkbox" id="{{ field.name }}" name="{{ field.name }}" {% if value in ["Yes", "on", "true", "True", "1"] %}checked{% endif %}>
+                        {% elif field.get('type') == "billing_charges" %}
+                            {% if charge_master and charge_field_sections %}
+                                <div class="billing-charges-container">
+                                    {% for section in charge_field_sections %}
+                                        <div class="charge-section">
+                                            <h4>{{ section.label }}</h4>
+                                            <table class="charges-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Charge</th>
+                                                        <th>Amount (₹)</th>
+                                                        <th>Quantity</th>
+                                                        <th>Total (₹)</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for charge_field in section.fields %}
+                                                        {% set charge_amount = charge_master.get(charge_field.name, "0") if charge_master else "0" %}
+                                                        {% if charge_amount == "" or charge_amount is none %}
+                                                            {% set charge_value = 0.0 %}
+                                                        {% else %}
+                                                            {% set charge_value = charge_amount|float %}
+                                                        {% endif %}
+                                                        <tr>
+                                                            <td>{{ charge_field.label|replace("(₹)", "")|trim }}</td>
+                                                            <td class="charge-amount">{{ "%.2f"|format(charge_value) }}</td>
+                                                            <td>
+                                                                <input 
+                                                                    type="number" 
+                                                                    name="qty_{{ charge_field.name }}" 
+                                                                    class="charge-qty" 
+                                                                    min="0" 
+                                                                    value="0" 
+                                                                    data-charge="{{ charge_field.name }}"
+                                                                    data-price="{{ charge_value }}"
+                                                                    onchange="calculateAdmissionBill()"
+                                                                    {% if readonly %}readonly{% endif %}
+                                                                >
+                                                            </td>
+                                                            <td class="charge-total">0.00</td>
+                                                        </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <p>Charge Master not available. Please configure charges first.</p>
+                            {% endif %}
+                        {% elif field.get('readonly') %}
+                            <input
+                                id="{{ field.name }}"
+                                name="{{ field.name }}"
+                                type="{{ field.get('type', 'text') }}"
+                                {% if field.get('min') is not none %}min="{{ field.get('min') }}"{% endif %}
+                                value="{{ value }}"
+                                readonly
+                                class="readonly-input"
+                            >
+                        {% else %}
+                            <input
+                                id="{{ field.name }}"
+                                name="{{ field.name }}"
+                                type="{{ field.get('type', 'text') }}"
+                                {% if field.get('min') is not none %}min="{{ field.get('min') }}"{% endif %}
+                                value="{{ value }}"
+                                {% if field.get('required') %}required{% endif %}
+                                {% if field.get('auto') and disabled_auto %}readonly{% endif %}
+                            >
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </section>
+        {% endfor %}
+    </div>
+</div>
+{% endmacro %}
+

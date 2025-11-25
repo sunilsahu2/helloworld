@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block content %}
+    <div class="content-header">
+        <div>
+            <h2>View All OPD Records</h2>
+            <p>Total OPD records: {{ total_opd }} | Showing page {{ page }} of {{ total_pages }}</p>
+        </div>
+        <div class="search-area">
+            <form class="search-form" method="get" action="{{ url_for('view_all_opd') }}">
+                <input name="search" placeholder="Search by name, token, mobile, bill, doctor" value="{{ search_query }}">
+                <button type="submit">Search</button>
+                {% if search_query %}
+                    <a href="{{ url_for('view_all_opd') }}" class="button-link">Clear</a>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+    
+    {% if opd_records %}
+        <div class="table-container">
+            <table class="opd-table" aria-label="All OPD records table">
+                <thead>
+                    <tr>
+                        <th>Patient Name</th>
+                        <th>Mobile</th>
+                        <th>Department</th>
+                        <th>Doctor</th>
+                        <th>Visit Type</th>
+                        <th>Token</th>
+                        <th>Bill No</th>
+                        <th>Amount</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for opd in opd_records %}
+                        <tr>
+                            <td>{{ opd.patient_name or "N/A" }}</td>
+                            <td>{{ opd.mobile_number or "N/A" }}</td>
+                            <td>{{ opd.department or "N/A" }}</td>
+                            <td>{{ opd.doctor_name or "N/A" }}</td>
+                            <td>{{ opd.visit_type or "N/A" }}</td>
+                            <td>{{ opd.opd_token or "N/A" }}</td>
+                            <td>{{ opd.bill_number or "N/A" }}</td>
+                            <td>
+                                {% set fee = opd.consultation_fee or "0" %}
+                                {% set discount = opd.discount or "0" %}
+                                {% set total = fee|int - discount|int %}
+                                ₹{{ total }}
+                            </td>
+                            <td class="actions">
+                                <a href="{{ url_for('index_opd', selected_id=opd.opd_id) }}" class="button-link">View</a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        {% if total_pages > 1 %}
+            <div class="pagination">
+                {% if page > 1 %}
+                    <a href="{{ url_for('view_all_opd', page=page-1, search=search_query if search_query else '') }}" class="pagination-link">« Previous</a>
+                {% else %}
+                    <span class="pagination-link disabled">« Previous</span>
+                {% endif %}
+                
+                {% for p in range(1, total_pages + 1) %}
+                    {% if p == page %}
+                        <span class="pagination-link active">{{ p }}</span>
+                    {% elif p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+                        <a href="{{ url_for('view_all_opd', page=p, search=search_query if search_query else '') }}" class="pagination-link">{{ p }}</a>
+                    {% elif p == page - 3 or p == page + 3 %}
+                        <span class="pagination-ellipsis">...</span>
+                    {% endif %}
+                {% endfor %}
+                
+                {% if page < total_pages %}
+                    <a href="{{ url_for('view_all_opd', page=page+1, search=search_query if search_query else '') }}" class="pagination-link">Next »</a>
+                {% else %}
+                    <span class="pagination-link disabled">Next »</span>
+                {% endif %}
+            </div>
+        {% endif %}
+    {% else %}
+        <p>{% if search_query %}No OPD records found matching "{{ search_query }}".{% else %}No OPD records found.{% endif %}</p>
+    {% endif %}
+{% endblock %}
+

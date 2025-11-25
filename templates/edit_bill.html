@@ -1,0 +1,348 @@
+{% extends "base.html" %}
+{% block content %}
+    <div class="content-header">
+        <div>
+            <h2>Edit Bill</h2>
+            <p>Edit charges, delete items, or regenerate the bill</p>
+        </div>
+        <div class="actions">
+            <a href="{{ url_for('view_bill', bill_id=bill.bill_id) }}" class="btn-secondary">View Bill</a>
+            <a href="{{ url_for('index_billing') }}" class="btn-secondary">Back to Billing</a>
+        </div>
+    </div>
+    
+    {% if request.args.get('success') %}
+        <div class="message success">
+            {{ request.args.get('success') }}
+        </div>
+    {% endif %}
+    
+    <div class="bill-edit-container">
+        <div class="bill-header">
+            <h3>Bill Information</h3>
+            <div class="bill-info">
+                <div class="bill-info-row">
+                    <span><strong>Bill Number:</strong> {{ bill.bill_number or "N/A" }}</span>
+                    <span><strong>Bill Date:</strong> {{ bill.billing_date or "N/A" }}</span>
+                    <span><strong>Bill Status:</strong> {{ bill.bill_status or "N/A" }}</span>
+                </div>
+            </div>
+        </div>
+        
+        {% if patient %}
+        <div class="bill-section">
+            <h3>Patient Information</h3>
+            <div class="patient-details">
+                <p><strong>Name:</strong> {{ patient.full_name or "N/A" }}</p>
+                <p><strong>MRN:</strong> {{ patient.hospital_id or "N/A" }}</p>
+                <p><strong>Mobile:</strong> {{ patient.mobile_primary or "N/A" }}</p>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if admission %}
+        <div class="bill-section">
+            <h3>Admission Details</h3>
+            <div class="admission-details">
+                <p><strong>Admission ID:</strong> {{ admission.admission_id|format_admission_id }}</p>
+                <p><strong>Ward/Room:</strong> {{ admission.ward or "N/A" }} / {{ admission.room_number or "N/A" }}</p>
+            </div>
+        </div>
+        {% endif %}
+        
+        <form method="POST" action="{{ url_for('edit_bill', bill_id=bill.bill_id) }}">
+            <div class="bill-section">
+                <h3>Charges</h3>
+                {% if charge_field_sections %}
+                    {% for section in charge_field_sections %}
+                        <div class="charge-section">
+                            <h4>{{ section.label }}</h4>
+                            <table class="charges-edit-table">
+                                <thead>
+                                    <tr>
+                                        <th>Charge</th>
+                                        <th>Unit Price (₹)</th>
+                                        <th>Quantity</th>
+                                        <th>Total (₹)</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for field in section.fields %}
+                                        <tr>
+                                            <td>{{ field.charge_name }}</td>
+                                            <td class="charge-amount">₹{{ "%.2f"|format(field.unit_price) }}</td>
+                                            <td>
+                                                <input 
+                                                    type="number" 
+                                                    name="qty_{{ field.charge_code }}" 
+                                                    class="charge-qty" 
+                                                    min="0" 
+                                                    step="0.01"
+                                                    value="{{ field.quantity }}" 
+                                                    data-charge="{{ field.charge_code }}"
+                                                    data-price="{{ field.unit_price }}"
+                                                    onchange="calculateBillTotal()"
+                                                >
+                                            </td>
+                                            <td class="charge-total">₹<span class="total-{{ field.charge_code }}">{{ "%.2f"|format(field.total) }}</span></td>
+                                            <td>
+                                                <button 
+                                                    type="submit" 
+                                                    name="action" 
+                                                    value="delete_charge" 
+                                                    class="btn-delete"
+                                                    onclick="return confirm('Are you sure you want to delete this charge?');"
+                                                >
+                                                    Delete
+                                                </button>
+                                                <input type="hidden" name="charge_index" value="{{ field.charge_index }}">
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="no-charges">No charges found in this bill.</p>
+                {% endif %}
+            </div>
+            
+            <div class="bill-section">
+                <h3>Bill Summary</h3>
+                <div class="bill-summary-edit">
+                    <div class="summary-row">
+                        <label>Subtotal:</label>
+                        <span id="subtotal-display">₹{{ bill.subtotal or "0.00" }}</span>
+                    </div>
+                    <div class="summary-row">
+                        <label>Discount:</label>
+                        <input 
+                            type="number" 
+                            name="discount" 
+                            id="discount-input" 
+                            class="summary-input"
+                            min="0" 
+                            step="0.01"
+                            value="{{ bill.discount or "0.00" }}" 
+                            onchange="calculateBillTotal()"
+                        >
+                    </div>
+                    <div class="summary-row">
+                        <label>Tax:</label>
+                        <input 
+                            type="number" 
+                            name="tax" 
+                            id="tax-input" 
+                            class="summary-input"
+                            min="0" 
+                            step="0.01"
+                            value="{{ bill.tax or "0.00" }}" 
+                            onchange="calculateBillTotal()"
+                        >
+                    </div>
+                    <div class="summary-row total-row">
+                        <label><strong>Total Amount:</strong></label>
+                        <span id="total-display"><strong>₹{{ bill.total_amount or "0.00" }}</strong></span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-actions">
+                <button type="submit" name="action" value="update_bill" class="btn-primary">Update Bill</button>
+                {% if bill.bill_status == "Draft" %}
+                    <button type="submit" name="action" value="regenerate_bill" class="btn-success">Generate Final Bill</button>
+                {% endif %}
+                <a href="{{ url_for('view_bill', bill_id=bill.bill_id) }}" class="btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+    
+    <style>
+        .bill-edit-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .bill-header {
+            border-bottom: 2px solid #0b3d60;
+            padding-bottom: 1rem;
+            margin-bottom: 2rem;
+        }
+        .bill-header h3 {
+            color: #0b3d60;
+            margin: 0 0 1rem 0;
+        }
+        .bill-info-row {
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .bill-section {
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            background: #f9f9f9;
+            border-radius: 4px;
+        }
+        .bill-section h3 {
+            color: #0b3d60;
+            margin-top: 0;
+            border-bottom: 2px solid #0b3d60;
+            padding-bottom: 0.5rem;
+        }
+        .charge-section {
+            margin-bottom: 1.5rem;
+        }
+        .charge-section h4 {
+            color: #0b3d60;
+            margin-bottom: 0.5rem;
+        }
+        .charges-edit-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            background: white;
+        }
+        .charges-edit-table th {
+            background-color: #0b3d60;
+            color: white;
+            padding: 0.75rem;
+            text-align: left;
+        }
+        .charges-edit-table td {
+            padding: 0.75rem;
+            border-bottom: 1px solid #ddd;
+        }
+        .charges-edit-table tbody tr:nth-child(even) {
+            background-color: #f5f5f5;
+        }
+        .charge-qty {
+            width: 100px;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .charge-amount, .charge-total {
+            text-align: right;
+            font-weight: 600;
+        }
+        .btn-delete {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .btn-delete:hover {
+            background-color: #c82333;
+        }
+        .bill-summary-edit {
+            max-width: 500px;
+            margin-left: auto;
+        }
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #ddd;
+        }
+        .summary-row label {
+            font-weight: 600;
+        }
+        .summary-input {
+            width: 150px;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            text-align: right;
+        }
+        .summary-row.total-row {
+            border-top: 2px solid #0b3d60;
+            border-bottom: 2px solid #0b3d60;
+            padding: 1rem 0;
+            margin-top: 0.5rem;
+            font-size: 1.2rem;
+        }
+        .form-actions {
+            display: flex;
+            gap: 1rem;
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 2px solid #ddd;
+        }
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn-success:hover {
+            background-color: #218838;
+        }
+        .no-charges {
+            text-align: center;
+            padding: 2rem;
+            color: #999;
+        }
+        .patient-details, .admission-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.5rem;
+        }
+        .patient-details p, .admission-details p {
+            margin: 0.5rem 0;
+        }
+    </style>
+    
+    <script>
+        function calculateBillTotal() {
+            let subtotal = 0;
+            
+            // Calculate subtotal from all charge quantities
+            document.querySelectorAll('.charge-qty').forEach(input => {
+                const chargeCode = input.dataset.charge;
+                const price = parseFloat(input.dataset.price) || 0;
+                const qty = parseFloat(input.value) || 0;
+                const total = price * qty;
+                
+                // Update the total display for this charge
+                const totalSpan = document.querySelector(`.total-${chargeCode}`);
+                if (totalSpan) {
+                    totalSpan.textContent = total.toFixed(2);
+                }
+                
+                subtotal += total;
+            });
+            
+            // Get discount and tax
+            const discount = parseFloat(document.getElementById('discount-input').value) || 0;
+            const tax = parseFloat(document.getElementById('tax-input').value) || 0;
+            
+            // Calculate total
+            const total = subtotal - discount + tax;
+            
+            // Update displays
+            document.getElementById('subtotal-display').textContent = '₹' + subtotal.toFixed(2);
+            document.getElementById('total-display').innerHTML = '<strong>₹' + total.toFixed(2) + '</strong>';
+        }
+        
+        // Initialize calculation on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            calculateBillTotal();
+        });
+    </script>
+{% endblock %}
+

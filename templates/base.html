@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Hospital Patient Module</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f5f5f5; margin: 0; padding: 0; color: #1f1f1f; }
+        .app-shell { display: flex; min-height: 100vh; }
+        .sidebar {
+            width: 260px;
+            background: #0b3d60;
+            color: #fff;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        .sidebar::-webkit-scrollbar {
+            width: 8px;
+        }
+        .sidebar::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .sidebar::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+        .sidebar::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+        .sidebar-header h2 { margin: 0; font-size: 1.3rem; }
+        .sidebar-header p { margin: 0.3rem 0 0; color: #c7d9e8; font-size: 0.9rem; }
+        .sidebar-empty { font-size: 0.9rem; color: #c7d9e8; }
+        .menu-group { display: flex; flex-direction: column; gap: 0.5rem; }
+        .menu-group.disabled .menu-toggle { background: rgba(255,255,255,0.08); color: #9bb5c9; cursor: not-allowed; }
+        .menu-toggle { background: rgba(255,255,255,0.15); color: #fff; border: none; border-radius: 6px; padding: 0.6rem 0.8rem; text-align: left; font-weight: 600; cursor: pointer; }
+        .menu-main-link { background: rgba(255,255,255,0.15); color: #fff; border: none; border-radius: 6px; padding: 0.6rem 0.8rem; text-align: left; font-weight: 600; cursor: pointer; text-decoration: none; display: block; }
+        .menu-main-link:hover { background: rgba(255,255,255,0.25); }
+        .menu-links { display: none; flex-direction: column; gap: 0.3rem; }
+        .menu-links.open { display: flex; }
+        .menu-link { background: transparent; border: none; text-align: left; color: #dbe8f3; padding: 0.45rem 0.6rem; border-radius: 4px; cursor: pointer; font-size: 0.95rem; text-decoration: none; display: block; }
+        .menu-link:hover { background: rgba(255,255,255,0.08); }
+        .menu-link.active { background: #fff; color: #0b3d60; font-weight: 600; }
+        .main-content { flex: 1; padding: 2rem; margin-left: 260px; min-height: 100vh; background: #f5f5f5; }
+        .container { max-width: 900px; margin: 0 auto; background: #fff; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+        h1, h2 { margin-top: 0; }
+        form { display: grid; gap: 0.75rem; margin-bottom: 2rem; }
+        label { font-weight: 600; display: block; margin-bottom: 0.2rem; }
+        input, textarea, select { padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; width: 100%; }
+        textarea { min-height: 80px; }
+        button { padding: 0.6rem 1rem; border: none; border-radius: 4px; background: #0078d4; color: #fff; cursor: pointer; }
+        button:hover { background: #005da0; }
+        .button-link { display: inline-flex; align-items: center; padding: 0.6rem 1rem; border-radius: 4px; text-decoration: none; background: #e0e0e0; color: #333; }
+        .button-link:hover { background: #cacaca; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 0.6rem; border-bottom: 1px solid #eee; text-align: left; }
+        .table-container { overflow-x: auto; margin-bottom: 1.5rem; }
+        .doctors-table th, .patients-table th, .opd-table th, .admissions-table th, .charges-table th, .billing-table th { background: #f5f5f5; font-weight: 600; position: sticky; top: 0; }
+        .doctors-table td, .patients-table td, .opd-table td, .admissions-table td, .charges-table td, .billing-table td { vertical-align: top; }
+        .pagination { display: flex; justify-content: center; align-items: center; gap: 0.5rem; margin-top: 2rem; flex-wrap: wrap; }
+        .pagination-link { padding: 0.5rem 0.8rem; border: 1px solid #ccc; border-radius: 4px; text-decoration: none; color: #333; background: #fff; }
+        .pagination-link:hover:not(.disabled):not(.active) { background: #f0f0f0; }
+        .pagination-link.active { background: #0078d4; color: #fff; border-color: #0078d4; }
+        .pagination-link.disabled { color: #999; cursor: not-allowed; background: #f5f5f5; }
+        .pagination-ellipsis { padding: 0.5rem 0.3rem; color: #666; }
+        .message { padding: 0.75rem 1rem; border-radius: 4px; margin-bottom: 1rem; }
+        .message.success { background: #e8f5e9; color: #256029; }
+        .message.error { background: #ffebee; color: #c62828; }
+        .actions a { color: #0078d4; text-decoration: none; }
+        .tabbed-form { display: flex; flex-direction: column; gap: 1rem; }
+        .tab-nav { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+        .tab-button { background: #e0e0e0; color: #333; border-radius: 20px; padding: 0.4rem 0.9rem; border: none; cursor: pointer; }
+        .tab-button.active { background: #0078d4; color: #fff; }
+        .tab-panels { border: 1px solid #e0e0e0; border-radius: 8px; padding: 1rem; background: #fafafa; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: grid; gap: 1rem; }
+        .form-field { display: flex; flex-direction: column; }
+        .readonly-value { padding: 0.6rem; border: 1px dashed #bbb; border-radius: 4px; background: #fff; }
+        .required { color: #c62828; margin-left: 0.2rem; }
+        .form-actions { display: flex; justify-content: flex-end; gap: 1rem; }
+        .content-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; }
+        .search-area { display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem; position: relative; }
+        .search-form { display: flex; gap: 0.5rem; align-items: center; }
+        .search-form input { width: 240px; }
+        .search-form button { background: #005da0; }
+        .search-dropdown { position: absolute; top: 3rem; right: 0; width: 320px; max-height: 240px; overflow-y: auto; background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 5; }
+        .search-dropdown.hidden { display: none; }
+        .search-result { display: block; padding: 0.6rem 0.8rem; text-decoration: none; color: #1f1f1f; border-bottom: 1px solid #f0f0f0; }
+        .search-result:last-child { border-bottom: none; }
+        .search-result:hover { background: #f5f8fb; }
+        .search-result-name { font-weight: 600; display: block; }
+        .search-result-meta { font-size: 0.85rem; color: #555; }
+        .search-no-results { padding: 0.7rem 0.9rem; color: #555; font-size: 0.9rem; }
+        .button-link.primary { background: #0078d4; color: #fff; }
+        .doctor-search-container, .patient-search-container { position: relative; }
+        .doctor-search-dropdown, .patient-search-dropdown { position: absolute; top: 100%; left: 0; right: 0; max-height: 240px; overflow-y: auto; background: #fff; border: 1px solid #e0e0e0; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 10; display: none; margin-top: 2px; }
+        .doctor-search-dropdown.show, .patient-search-dropdown.show { display: block; }
+        .doctor-search-item, .patient-search-item { padding: 0.6rem 0.8rem; cursor: pointer; border-bottom: 1px solid #f0f0f0; }
+        .doctor-search-item:last-child, .patient-search-item:last-child { border-bottom: none; }
+        .doctor-search-item:hover, .patient-search-item:hover { background: #f5f8fb; }
+        .doctor-search-item-name, .patient-search-item-name { font-weight: 600; display: block; }
+        .doctor-search-item-meta, .patient-search-item-meta { font-size: 0.85rem; color: #555; }
+    </style>
+</head>
+{% set section_list = sections if sections is defined else [] %}
+{% set is_doctor_page = request.endpoint and 'doctor' in request.endpoint %}
+{% set is_opd_page = request.endpoint and 'opd' in request.endpoint %}
+{% set is_admission_page = request.endpoint and 'admission' in request.endpoint %}
+{% set is_charge_page = request.endpoint and 'charge' in request.endpoint %}
+{% set is_billing_page = request.endpoint and 'billing' in request.endpoint %}
+<body>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>Hospital Modules</h2>
+                <p>Navigate workflows</p>
+            </div>
+            <div class="menu-group">
+                <a href="{{ url_for('index') }}" class="menu-main-link">Patient</a>
+                <div class="menu-links open" data-menu="patient">
+                    <a href="{{ url_for('view_all_patients') }}" class="menu-link{% if request.endpoint == 'view_all_patients' %} active{% endif %}">View All Patients</a>
+                    {% if not is_doctor_page and not is_opd_page and not is_admission_page and not is_charge_page and not is_billing_page and section_list %}
+                        {% for section in section_list %}
+                            <button
+                                type="button"
+                                class="menu-link{% if loop.first and request.endpoint != 'view_all_patients' %} active{% endif %}"
+                                data-target="{{ section.key }}"
+                                aria-controls="{{ section.key }}"
+                            >
+                                {{ section.label }}
+                            </button>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+            </div>
+            <div class="menu-group">
+                <a href="{{ url_for('index_doctors') }}" class="menu-main-link">Doctor</a>
+                <div class="menu-links open" data-menu="doctor">
+                    <a href="{{ url_for('view_all_doctors') }}" class="menu-link{% if request.endpoint == 'view_all_doctors' %} active{% endif %}">View All Doctors</a>
+                    {% if is_doctor_page and section_list %}
+                        {% for section in section_list %}
+                            <button
+                                type="button"
+                                class="menu-link{% if loop.first and request.endpoint != 'view_all_doctors' %} active{% endif %}"
+                                data-target="{{ section.key }}"
+                                aria-controls="{{ section.key }}"
+                            >
+                                {{ section.label }}
+                            </button>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+            </div>
+            <div class="menu-group">
+                <a href="{{ url_for('index_opd') }}" class="menu-main-link">OPD</a>
+                <div class="menu-links open" data-menu="opd">
+                    <a href="{{ url_for('view_all_opd') }}" class="menu-link{% if request.endpoint == 'view_all_opd' %} active{% endif %}">View All OPD</a>
+                    {% if is_opd_page and section_list %}
+                        {% for section in section_list %}
+                            <button
+                                type="button"
+                                class="menu-link{% if loop.first and request.endpoint != 'view_all_opd' %} active{% endif %}"
+                                data-target="{{ section.key }}"
+                                aria-controls="{{ section.key }}"
+                            >
+                                {{ section.label }}
+                            </button>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+            </div>
+            <div class="menu-group">
+                <a href="{{ url_for('index_admissions') }}" class="menu-main-link">Admission</a>
+                <div class="menu-links open" data-menu="admission">
+                    <a href="{{ url_for('view_all_admissions') }}" class="menu-link{% if request.endpoint == 'view_all_admissions' %} active{% endif %}">View All Admissions</a>
+                    {% set is_admission_page = request.endpoint and 'admission' in request.endpoint %}
+                    {% if is_admission_page and section_list %}
+                        {% for section in section_list %}
+                            <button
+                                type="button"
+                                class="menu-link{% if loop.first and request.endpoint != 'view_all_admissions' %} active{% endif %}"
+                                data-target="{{ section.key }}"
+                                aria-controls="{{ section.key }}"
+                            >
+                                {{ section.label }}
+                            </button>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+            </div>
+            <div class="menu-group">
+                <a href="{{ url_for('index_billing') }}" class="menu-main-link">Billing</a>
+                <div class="menu-links open" data-menu="billing">
+                    <a href="{{ url_for('view_all_billing') }}" class="menu-link{% if request.endpoint == 'view_all_billing' %} active{% endif %}">View All Bills</a>
+                </div>
+            </div>
+            <div class="menu-group">
+                <a href="{{ url_for('index_charges') }}" class="menu-main-link">Charge Master</a>
+                <div class="menu-links open" data-menu="charge">
+                    {% if is_charge_page and section_list %}
+                        {% for section in section_list %}
+                            <button
+                                type="button"
+                                class="menu-link{% if loop.first %} active{% endif %}"
+                                data-target="{{ section.key }}"
+                                aria-controls="{{ section.key }}"
+                            >
+                                {{ section.label }}
+                            </button>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+            </div>
+        </aside>
+        <main class="main-content">
+            <div class="container">
+                <h1>{% if request.endpoint and 'billing' in request.endpoint %}Hospital Billing Module{% elif request.endpoint and 'charge' in request.endpoint %}Hospital Charge Master Module{% elif request.endpoint and 'admission' in request.endpoint %}Hospital Admission Module{% elif request.endpoint and 'opd' in request.endpoint %}Hospital OPD Module{% elif request.endpoint and 'doctor' in request.endpoint %}Hospital Doctor Module{% else %}Hospital Patient Module{% endif %}</h1>
+                {% if success %}
+                    <div class="message success">{{ success }}</div>
+                {% endif %}
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+    <script>
+        function calculateAgeFromDob(value) {
+            if (!value) return "";
+            const dob = new Date(value);
+            if (Number.isNaN(dob.getTime())) return "";
+            const today = new Date();
+            let age = today.getFullYear() - dob.getFullYear();
+            const m = today.getMonth() - dob.getMonth();
+            if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
+                age -= 1;
+            }
+            return age >= 0 ? age.toString() : "";
+        }
+
+        function activatePanel(targetId) {
+            const container = document.querySelector(".tabbed-form");
+            if (!container) return;
+            const targetPanel = container.querySelector(`#${targetId}`);
+            if (!targetPanel) return;
+            container.querySelectorAll(".tab-panel").forEach((panel) => {
+                panel.classList.toggle("active", panel === targetPanel);
+            });
+            container.querySelectorAll(".tab-button").forEach((button) => {
+                button.classList.toggle("active", button.dataset.target === targetId);
+            });
+            document.querySelectorAll(".menu-link").forEach((link) => {
+                link.classList.toggle("active", link.dataset.target === targetId);
+            });
+        }
+
+        document.addEventListener("click", (event) => {
+            const button = event.target.closest(".tab-button");
+            if (button) {
+                activatePanel(button.dataset.target);
+                return;
+            }
+
+            const menuToggle = event.target.closest(".menu-toggle");
+            if (menuToggle) {
+                const expanded = menuToggle.classList.toggle("open");
+                menuToggle.setAttribute("aria-expanded", expanded);
+                const menuLinks = menuToggle.nextElementSibling;
+                if (menuLinks) {
+                    menuLinks.classList.toggle("open", expanded);
+                }
+                return;
+            }
+
+            const link = event.target.closest(".menu-link");
+            if (link) {
+                activatePanel(link.dataset.target);
+            }
+        });
+
+        document.addEventListener("click", (event) => {
+            const searchLink = event.target.closest(".search-result");
+            if (searchLink) {
+                const dropdown = searchLink.closest(".search-dropdown");
+                if (dropdown) dropdown.classList.add("hidden");
+            }
+        });
+
+        function initAgeAutoFill() {
+            document.querySelectorAll('input[name="dob"]').forEach((dobInput) => {
+                const form = dobInput.closest("form");
+                if (!form) return;
+                const ageInput = form.querySelector('input[name="age"]');
+                if (!ageInput) return;
+
+                const updateAge = () => {
+                    const calculated = calculateAgeFromDob(dobInput.value);
+                    if (calculated) {
+                        ageInput.value = calculated;
+                        ageInput.readOnly = true;
+                    } else if (!dobInput.value) {
+                        ageInput.readOnly = false;
+                    }
+                };
+
+                dobInput.addEventListener("change", updateAge);
+                dobInput.addEventListener("blur", updateAge);
+                if (dobInput.value) {
+                    updateAge();
+                }
+            });
+        }
+
+        function initDoctorSearch() {
+            const doctorInputs = document.querySelectorAll(".doctor-search-input");
+            doctorInputs.forEach((input) => {
+                const dropdown = document.getElementById(input.id + "_dropdown");
+                if (!dropdown) return;
+
+                let searchTimeout;
+                let selectedDoctor = null;
+
+                input.addEventListener("input", (e) => {
+                    const query = e.target.value.trim();
+                    clearTimeout(searchTimeout);
+
+                    if (query.length < 2) {
+                        dropdown.classList.remove("show");
+                        dropdown.innerHTML = "";
+                        selectedDoctor = null;
+                        return;
+                    }
+
+                    searchTimeout = setTimeout(async () => {
+                        try {
+                            const response = await fetch(`/api/doctors/search?q=${encodeURIComponent(query)}`);
+                            const data = await response.json();
+                            displayDoctorResults(data.doctors, dropdown, input);
+                        } catch (error) {
+                            console.error("Error searching doctors:", error);
+                        }
+                    }, 300);
+                });
+
+                input.addEventListener("focus", () => {
+                    if (dropdown.innerHTML && dropdown.innerHTML.trim() !== "") {
+                        dropdown.classList.add("show");
+                    }
+                });
+
+                input.addEventListener("blur", (e) => {
+                    setTimeout(() => {
+                        if (!dropdown.contains(document.activeElement)) {
+                            dropdown.classList.remove("show");
+                        }
+                    }, 200);
+                });
+
+                function displayDoctorResults(doctors, dropdown, input) {
+                    if (doctors.length === 0) {
+                        dropdown.innerHTML = '<div class="doctor-search-item">No doctors found</div>';
+                        dropdown.classList.add("show");
+                        return;
+                    }
+
+                    dropdown.innerHTML = doctors
+                        .map(
+                            (doctor) => `
+                        <div class="doctor-search-item" data-name="${doctor.name}" data-id="${doctor.id}">
+                            <span class="doctor-search-item-name">${doctor.name}</span>
+                            <span class="doctor-search-item-meta">${doctor.specialization || ""} ${doctor.department ? "| " + doctor.department : ""}</span>
+                        </div>
+                    `
+                        )
+                        .join("");
+
+                    dropdown.querySelectorAll(".doctor-search-item").forEach((item) => {
+                        item.addEventListener("click", () => {
+                            const name = item.dataset.name;
+                            input.value = name;
+                            selectedDoctor = { name, id: item.dataset.id };
+                            dropdown.classList.remove("show");
+                        });
+                    });
+
+                    dropdown.classList.add("show");
+                }
+            });
+        }
+
+        function initPatientSearch() {
+            const patientInputs = document.querySelectorAll(".patient-search-input");
+            patientInputs.forEach((input) => {
+                const dropdown = document.getElementById(input.id + "_dropdown");
+                if (!dropdown) return;
+
+                let searchTimeout;
+                let selectedPatient = null;
+
+                input.addEventListener("input", (e) => {
+                    const query = e.target.value.trim();
+                    clearTimeout(searchTimeout);
+
+                    if (query.length < 2) {
+                        dropdown.classList.remove("show");
+                        dropdown.innerHTML = "";
+                        // If field is cleared, reset patient details
+                        if (query.length === 0 && selectedPatient) {
+                            resetPatientFields(input);
+                            selectedPatient = null;
+                        }
+                        return;
+                    }
+
+                    searchTimeout = setTimeout(async () => {
+                        try {
+                            const response = await fetch(`/api/patients/search?q=${encodeURIComponent(query)}`);
+                            const data = await response.json();
+                            displayPatientResults(data.patients, dropdown, input);
+                        } catch (error) {
+                            console.error("Error searching patients:", error);
+                        }
+                    }, 300);
+                });
+
+                input.addEventListener("focus", () => {
+                    if (dropdown.innerHTML && dropdown.innerHTML.trim() !== "") {
+                        dropdown.classList.add("show");
+                    }
+                });
+
+                input.addEventListener("blur", (e) => {
+                    setTimeout(() => {
+                        if (!dropdown.contains(document.activeElement)) {
+                            dropdown.classList.remove("show");
+                        }
+                    }, 200);
+                });
+
+                function resetPatientFields(patientIdInput) {
+                    const form = patientIdInput.closest("form");
+                    if (form) {
+                        const nameField = form.querySelector('input[name="patient_name"]');
+                        const ageField = form.querySelector('input[name="patient_age"]');
+                        const genderField = form.querySelector('select[name="patient_gender"], input[name="patient_gender"]');
+                        
+                        if (nameField) {
+                            nameField.value = "";
+                            nameField.readOnly = false;
+                            nameField.style.backgroundColor = "";
+                        }
+                        if (ageField) {
+                            ageField.value = "";
+                            ageField.readOnly = false;
+                            ageField.style.backgroundColor = "";
+                        }
+                        if (genderField) {
+                            if (genderField.tagName === "SELECT") {
+                                genderField.value = "";
+                                genderField.disabled = false;
+                                genderField.style.backgroundColor = "";
+                            } else {
+                                genderField.value = "";
+                                genderField.readOnly = false;
+                                genderField.style.backgroundColor = "";
+                            }
+                        }
+                    }
+                }
+
+                function displayPatientResults(patients, dropdown, input) {
+                    if (patients.length === 0) {
+                        dropdown.innerHTML = '<div class="patient-search-item">No patients found</div>';
+                        dropdown.classList.add("show");
+                        return;
+                    }
+
+                    dropdown.innerHTML = patients
+                        .map(
+                            (patient) => `
+                        <div class="patient-search-item" data-id="${patient.id}" data-name="${patient.name}" data-age="${patient.age || ''}" data-gender="${patient.gender || ''}" data-mobile="${patient.mobile || ''}" data-mrn="${patient.mrn || ''}" data-type="${patient.type || 'patient'}">
+                            <span class="patient-search-item-name">${patient.name} <span style="color: #0078d4; font-size: 0.85rem;">(${patient.type === 'opd' ? 'OPD' : 'Patient'})</span></span>
+                            <span class="patient-search-item-meta">MRN: ${patient.mrn || "N/A"} | Age: ${patient.age || "N/A"} | ${patient.mobile || "N/A"}</span>
+                        </div>
+                    `
+                        )
+                        .join("");
+
+                    dropdown.querySelectorAll(".patient-search-item").forEach((item) => {
+                        item.addEventListener("click", () => {
+                            const patientId = item.dataset.id;
+                            const patientName = item.dataset.name;
+                            const patientAge = item.dataset.age;
+                            const patientGender = item.dataset.gender;
+                            
+                            // Set patient ID
+                            input.value = patientId;
+                            selectedPatient = {
+                                id: patientId,
+                                name: patientName,
+                                age: patientAge,
+                                gender: patientGender,
+                            };
+                            
+                            // Auto-populate patient details
+                            const form = input.closest("form");
+                            if (form) {
+                                const nameField = form.querySelector('input[name="patient_name"]');
+                                const ageField = form.querySelector('input[name="patient_age"]');
+                                const genderField = form.querySelector('select[name="patient_gender"], input[name="patient_gender"]');
+                                
+                                if (nameField) {
+                                    nameField.value = patientName;
+                                    nameField.readOnly = true;
+                                    nameField.style.backgroundColor = "#f5f5f5";
+                                }
+                                if (ageField) {
+                                    ageField.value = patientAge;
+                                    ageField.readOnly = true;
+                                    ageField.style.backgroundColor = "#f5f5f5";
+                                }
+                                if (genderField) {
+                                    if (genderField.tagName === "SELECT") {
+                                        Array.from(genderField.options).forEach(option => {
+                                            if (option.value === patientGender) {
+                                                genderField.value = patientGender;
+                                            }
+                                        });
+                                        genderField.disabled = true;
+                                        genderField.style.backgroundColor = "#f5f5f5";
+                                    } else {
+                                        genderField.value = patientGender;
+                                        genderField.readOnly = true;
+                                        genderField.style.backgroundColor = "#f5f5f5";
+                                    }
+                                }
+                            }
+                            
+                            dropdown.classList.remove("show");
+                        });
+                    });
+
+                    dropdown.classList.add("show");
+                }
+            });
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            initAgeAutoFill();
+            initDoctorSearch();
+            initPatientSearch();
+            const firstLink = document.querySelector(".menu-link");
+            if (firstLink) {
+                activatePanel(firstLink.dataset.target);
+            }
+        });
+    </script>
+</body>
+</html>
+

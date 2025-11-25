@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% from "partials/form_sections.html" import render_sections %}
+{% block content %}
+    <h2>Edit Patient #{{ patient.patient_id }}</h2>
+    {% if error %}
+        <div class="message error">{{ error }}</div>
+    {% endif %}
+    <form method="post">
+        {{ render_sections(sections, form_data, True, True) }}
+        <div class="form-actions">
+            <a href="{{ url_for('index') }}" class="button-link">Cancel</a>
+            <button type="submit">Save Changes</button>
+        </div>
+    </form>
+{% endblock %}
+

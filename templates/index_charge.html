@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% from "partials/form_sections.html" import render_sections %}
+{% block content %}
+    <div class="content-header">
+        <div>
+            <h2>Charge Master Configuration</h2>
+            <p>Configure all hospital charges in one place. Update the charges below and save.</p>
+        </div>
+    </div>
+    {% if success %}
+        <div class="message success">{{ success }}</div>
+    {% endif %}
+    {% if error %}
+        <div class="message error">{{ error }}</div>
+    {% endif %}
+    <form method="post" action="{{ url_for('index_charges') }}">
+        {{ render_sections(sections, form_data, False, True, False) }}
+        <div class="form-actions">
+            <button type="submit">Save Charge Master</button>
+        </div>
+    </form>
+{% endblock %}

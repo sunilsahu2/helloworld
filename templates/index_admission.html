@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "partials/form_sections.html" import render_sections %}
+{% set view_mode = selected_admission is not none %}
+{% block content %}
+    <div class="content-header">
+        <div>
+            <h2>{{ "View Admission" if view_mode else "Create Admission" }}</h2>
+            <p>
+                {% if view_mode %}
+                    Viewing admission for {{ selected_admission.patient_name or ("Admission #" ~ selected_admission.admission_id) }}.
+                {% else %}
+                    Complete the admission registration using the tabs below.
+                {% endif %}
+            </p>
+        </div>
+        <div class="search-area">
+            <form class="search-form" method="get" action="{{ url_for('index_admissions') }}">
+                <input name="search" placeholder="Search by name, ID, room, bed" value="{{ search_query }}">
+                <button type="submit">Search</button>
+            </form>
+{% if search_query and (not selected_admission or (selected_admission and selected_admission.admission_id|string != request.args.get('selected_id'))) %}
+                <div class="search-dropdown">
+                    {% if search_results %}
+                        {% for admission in search_results %}
+                            <a
+                                class="search-result"
+                                href="{{ url_for('index_admissions', search=search_query, selected_id=admission.admission_id) }}"
+                            >
+                                <span class="search-result-name">{{ admission.patient_name or "Unnamed Patient" }}</span>
+                                <span class="search-result-meta">ID: {{ admission.admission_id }} | Room: {{ admission.room_number or "N/A" }}</span>
+                            </a>
+                        {% endfor %}
+                    {% else %}
+                        <div class="search-no-results">No matches for "{{ search_query }}".</div>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    {% if error %}
+        <div class="message error">{{ error }}</div>
+    {% endif %}
+    {% if request.args.get('selected_id') and not selected_admission %}
+        <div class="message error">Admission record not found.</div>
+    {% elif view_mode and selected_admission %}
+        <div class="message success">Admission #{{ selected_admission.admission_id }} loaded. Viewing details below.</div>
+    {% endif %}
+    <form method="post" action="{{ url_for('create_admission') }}" class="{% if view_mode %}readonly{% endif %}" {% if view_mode %}onsubmit="return false;"{% endif %}>
+        {{ render_sections(sections, form_data, False, True, view_mode) }}
+        <div class="form-actions">
+            {% if view_mode %}
+                <a class="button-link" href="{{ url_for('index_admissions') }}">Clear Selection</a>
+                <a class="button-link primary" href="{{ url_for('edit_admission', admission_id=selected_admission.admission_id) }}">Edit Admission</a>
+            {% else %}
+                <button type="submit">Save Admission</button>
+            {% endif %}
+        </div>
+    </form>
+{% endblock %}
+

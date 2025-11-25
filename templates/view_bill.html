@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block content %}
+    <div class="content-header">
+        <div>
+            <h2>Bill Details</h2>
+            <p>View bill information and download as PDF</p>
+        </div>
+        <div class="actions">
+            {% if bill.bill_status == "Draft" %}
+                <a href="{{ url_for('edit_bill', bill_id=bill.bill_id) }}" class="btn-edit">Edit Bill</a>
+            {% endif %}
+            <a href="{{ url_for('download_bill_pdf', bill_id=bill.bill_id) }}" class="btn-primary" target="_blank">Download PDF</a>
+            <a href="{{ url_for('index_billing') }}" class="btn-secondary">Back to Billing</a>
+        </div>
+    </div>
+    
+    <div class="bill-view-container">
+        <div class="bill-header">
+            <h1>Hospital Bill</h1>
+            <div class="bill-info">
+                <div class="bill-info-row">
+                    <span><strong>Bill Number:</strong> {{ bill.bill_number or "N/A" }}</span>
+                    <span><strong>Bill Date:</strong> {{ bill.billing_date or "N/A" }}</span>
+                    <span><strong>Bill Type:</strong> {{ bill.billing_type or "N/A" }}</span>
+                </div>
+            </div>
+        </div>
+        
+        {% if patient %}
+        <div class="bill-section">
+            <h3>Patient Information</h3>
+            <div class="patient-details">
+                <p><strong>Name:</strong> {{ patient.full_name or "N/A" }}</p>
+                <p><strong>MRN:</strong> {{ patient.hospital_id or "N/A" }}</p>
+                <p><strong>Mobile:</strong> {{ patient.mobile_primary or "N/A" }}</p>
+                <p><strong>Age:</strong> {{ patient.age or "N/A" }}</p>
+                <p><strong>Gender:</strong> {{ patient.gender or "N/A" }}</p>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if admission %}
+        <div class="bill-section">
+            <h3>Admission Details</h3>
+            <div class="admission-details">
+                <p><strong>Admission ID:</strong> {{ admission.admission_id|format_admission_id }}</p>
+                <p><strong>Ward/Room:</strong> {{ admission.ward or "N/A" }} / {{ admission.room_number or "N/A" }}</p>
+                <p><strong>Bed:</strong> {{ admission.bed_number or "N/A" }}</p>
+            </div>
+        </div>
+        {% endif %}
+        
+        <div class="bill-section">
+            <h3>Charges</h3>
+            <table class="bill-charges-table">
+                <thead>
+                    <tr>
+                        <th>Charge</th>
+                        <th>Quantity</th>
+                        <th>Unit Price</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for charge in charges %}
+                    <tr>
+                        <td>{{ charge.charge_name }}</td>
+                        <td>{{ charge.quantity }}</td>
+                        <td>₹{{ "%.2f"|format(charge.unit_price|float) }}</td>
+                        <td>₹{{ "%.2f"|format(charge.total|float) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="bill-section">
+            <h3>Bill Summary</h3>
+            <div class="bill-summary-view">
+                <div class="summary-row">
+                    <span>Subtotal:</span>
+                    <span>₹{{ bill.subtotal or "0.00" }}</span>
+                </div>
+                <div class="summary-row">
+                    <span>Discount:</span>
+                    <span>₹{{ bill.discount or "0.00" }}</span>
+                </div>
+                <div class="summary-row">
+                    <span>Tax:</span>
+                    <span>₹{{ bill.tax or "0.00" }}</span>
+                </div>
+                <div class="summary-row total-row">
+                    <span><strong>Total Amount:</strong></span>
+                    <span><strong>₹{{ bill.total_amount or "0.00" }}</strong></span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <style>
+        .bill-view-container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .bill-header {
+            text-align: center;
+            border-bottom: 3px solid #0b3d60;
+            padding-bottom: 1rem;
+            margin-bottom: 2rem;
+        }
+        .bill-header h1 {
+            color: #0b3d60;
+            margin: 0 0 1rem 0;
+        }
+        .bill-info-row {
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .bill-section {
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            background: #f9f9f9;
+            border-radius: 4px;
+        }
+        .bill-section h3 {
+            color: #0b3d60;
+            margin-top: 0;
+            border-bottom: 2px solid #0b3d60;
+            padding-bottom: 0.5rem;
+        }
+        .patient-details, .admission-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.5rem;
+        }
+        .patient-details p, .admission-details p {
+            margin: 0.5rem 0;
+        }
+        .bill-charges-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+        .bill-charges-table th {
+            background-color: #0b3d60;
+            color: white;
+            padding: 0.75rem;
+            text-align: left;
+        }
+        .bill-charges-table td {
+            padding: 0.75rem;
+            border-bottom: 1px solid #ddd;
+        }
+        .bill-charges-table tbody tr:nth-child(even) {
+            background-color: #f5f5f5;
+        }
+        .bill-summary-view {
+            max-width: 400px;
+            margin-left: auto;
+        }
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #ddd;
+        }
+        .summary-row.total-row {
+            border-top: 2px solid #0b3d60;
+            border-bottom: 2px solid #0b3d60;
+            padding: 1rem 0;
+            margin-top: 0.5rem;
+            font-size: 1.2rem;
+        }
+        .actions {
+            display: flex;
+            gap: 1rem;
+        }
+        .btn-primary, .btn-secondary {
+            padding: 0.5rem 1.5rem;
+            border-radius: 4px;
+            text-decoration: none;
+            display: inline-block;
+            font-weight: 600;
+        }
+        .btn-primary {
+            background-color: #0b3d60;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #0a2d47;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background-color: #5a6268;
+        }
+        .btn-edit {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-edit:hover {
+            background-color: #218838;
+        }
+    </style>
+{% endblock %}
+

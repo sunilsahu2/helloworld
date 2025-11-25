@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "partials/form_sections.html" import render_sections %}
+{% set view_mode = selected_doctor is not none %}
+{% block content %}
+    <div class="content-header">
+        <div>
+            <h2>{{ "View Doctor" if view_mode else "Create Doctor" }}</h2>
+            <p>
+                {% if view_mode %}
+                    Viewing details for {{ selected_doctor.full_name or ("Doctor #" ~ selected_doctor.doctor_id) }}.
+                {% else %}
+                    Complete the doctor registration using the tabs below.
+                {% endif %}
+            </p>
+        </div>
+        <div class="search-area">
+            <form class="search-form" method="get" action="{{ url_for('index_doctors') }}">
+                <input name="search" placeholder="Search by name, registration, mobile" value="{{ search_query }}">
+                <button type="submit">Search</button>
+            </form>
+{% if search_query and (not selected_doctor or (selected_doctor and selected_doctor.doctor_id|string != request.args.get('selected_id'))) %}
+                <div class="search-dropdown">
+                    {% if search_results %}
+                        {% for doctor in search_results %}
+                            <a
+                                class="search-result"
+                                href="{{ url_for('index_doctors', search=search_query, selected_id=doctor.doctor_id) }}"
+                            >
+                                <span class="search-result-name">{{ doctor.full_name or "Unnamed Doctor" }}</span>
+                                <span class="search-result-meta">{{ doctor.specialization }} | Reg: {{ doctor.registration_number or "N/A" }}</span>
+                            </a>
+                        {% endfor %}
+                    {% else %}
+                        <div class="search-no-results">No matches for "{{ search_query }}".</div>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    {% if error %}
+        <div class="message error">{{ error }}</div>
+    {% endif %}
+    <form method="post" action="{{ url_for('create_doctor') }}" class="{% if view_mode %}readonly{% endif %}">
+        {{ render_sections(sections, form_data, False, True, view_mode) }}
+        <div class="form-actions">
+            {% if view_mode %}
+                <a class="button-link" href="{{ url_for('index_doctors') }}">Clear Selection</a>
+                <a class="button-link primary" href="{{ url_for('edit_doctor', doctor_id=selected_doctor.doctor_id) }}">Edit Doctor</a>
+            {% else %}
+                <button type="submit">Save Doctor</button>
+            {% endif %}
+        </div>
+    </form>
+{% endblock %}
+
